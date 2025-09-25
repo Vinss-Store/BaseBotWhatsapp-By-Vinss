@@ -11,6 +11,7 @@ const chalk = require("chalk");
 global.prefix = "."; // Prefix command bot (ubah sesuai keinginan)
 global.botName = "VINSSBOTZ"; // Nama bot
 global.owner = ["6285380166282"];
+global.ownerNumber = global.owner; // alias
 
 // ==============================
 // 🔧 State Default
@@ -21,7 +22,7 @@ global.banned = []; // daftar user yang di-ban (array)
 // ==============================
 // 🛡 Fitur Group
 // ==============================
-global.antilink = true, 
+global.antilink = false;
 global.antitoxic = false;
 global.antispam = false;
 global.sniper = false; // auto detect delete
@@ -50,12 +51,12 @@ global.wm4 = "Made by Vinss Boyz";
 global.APIs = {
   neoxr: "https://api.neoxr.eu/",
   botcahx: "https://api.botcahx.eu.org/"
-}
+};
 
 global.APIKeys = {
   "https://api.neoxr.eu/": "exSYfD",
   "https://api.botcahx.eu.org/": "7g7LtR2M"
-}
+};
 
 // ==============================
 // 📢 Pesan Bot
@@ -87,11 +88,50 @@ global.author = "Bot WhatsApp";
 // 🖼 Thumbnail
 // ==============================
 global.thumb = "https://telegra.ph/file/7aee19f90e52a3730f200.jpg";
+global.profile = global.thumb; // thumbnail fix
+
+// ==============================
+// 📂 Fake Doc Style
+// ==============================
+global.fake = {
+  docs: "application/pdf", // cukup pilih salah satu tipe
+  listfakedocs: [
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/pdf",
+    "application/zip"
+  ]
+};
+
+// ==============================
+// ⏰ Ucapan Waktu
+// ==============================
+global.ucapanWaktu = (() => {
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 12) return "Selamat Pagi";
+  if (hour >= 12 && hour < 15) return "Selamat Siang";
+  if (hour >= 15 && hour < 18) return "Selamat Sore";
+  return "Selamat Malam";
+})();
+
+// ==============================
+// 🖼 Thumbnail
+// ==============================
+global.thumb = "./media/thumbnail.png"; // GANTI DENGAN PATH LOKAL
+global.profile = global.thumb;
+// ==============================
+// 🔗 Link & Channel
+// ==============================
+global.my = {
+  ch: "1203632xxxxxxx@newsletter", // JID channel
+  chid: "0029VaF4IIt1CYoaRgoOaX2i@newsletter", // Invite code channel
+  gh: "https://github.com/vinssbotz" // link github / web
+};
 
 // ==============================
 // ♻ Auto Reload Config
 // ==============================
-// === Hot reload config ===
 let file = require.resolve(__filename);
 fs.watchFile(file, () => {
   fs.unwatchFile(file);

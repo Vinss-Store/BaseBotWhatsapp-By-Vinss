@@ -1,77 +1,178 @@
-const { downloadMediaMessage } = require("@whiskeysockets/baileys");
+const { downloadMediaMessage, jidDecode } = require("@whiskeysockets/baileys");
+const {
+pinterest,
+wallpaper,
+wikimedia,
+quotesAnime,
+tiktokDl,
+instagramDl,
+ringtone,
+styletext
+} = require('./lib/scraper');
 const fs = require("fs");
 const chalk = require("chalk");
 const fetch = require("node-fetch"); // untuk clonepp
-const {
-  pinterest,
-  wallpaper,
-  wikimedia,
-  quotesAnime,
-  aiovideodl,
-  tiktokDl,
-  instagramDl,
-  ringtone,
-  styletext,
-  hitamkan,
-  remini,
-  mediafireDl
-} = require('./lib/scraper');
+const path = require('path');
 const { TelegraPh, handleToUrl } = require('./lib/uploader');
 const { createCanvas, loadImage } = require("canvas");
 const axios = require("axios");
 
+const dbPath = path.join(__dirname, 'database', 'registeredUsers.json');
 
+global.registeredUsers = global.registeredUsers || [];
+global.registeredUsers = loadRegisteredUsers();
 const snakeLadder = {};
 
+function loadRegisteredUsers() {
+    try {
+        if (fs.existsSync(dbPath)) {
+            const data = fs.readFileSync(dbPath, 'utf8');
+            return JSON.parse(data);
+        }
+    } catch (error) {
+        console.error('Error loading registered users:', error);
+    }
+    return {};
+}
+
+function saveRegisteredUsers() {
+    try {
+        const dir = path.dirname(dbPath);
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+        }
+        fs.writeFileSync(dbPath, JSON.stringify(global.registeredUsers, null, 2));
+    } catch (error) {
+        console.error('Error saving registered users:', error);
+    }
+}
+
+function registerUser(userId, name = '', age = 0) {
+    if (!global.db.data.users) global.db.data.users = {};
+    
+    if (!global.registeredUsers[userId]) {
+        // Simpan ke memory
+        global.registeredUsers[userId] = {
+            registered: true,
+            regDate: Date.now(),
+            name: name,
+            age: age
+        };
+        
+        // Simpan ke file database
+        saveRegisteredUsers();
+        
+        // Buat data user di sistem RPG
+        if (!global.db.data.users[userId]) {
+            global.db.data.users[userId] = {
+                registered: true,
+                regDate: Date.now(),
+                name: name,
+                age: age,
+                uang: 1000,
+                exp: 0,
+                level: 1,
+                stamina: 10,
+                ikan: 0,
+                daging: 0,
+                emas: 0,
+                batu: 0,
+                lastDaily: 0,
+                quests: [],
+                pet: null,
+                marriedTo: null,
+                inventory: {},
+            };
+        } else {
+            // Update data existing
+            global.db.data.users[userId].registered = true;
+            global.db.data.users[userId].regDate = Date.now();
+            global.db.data.users[userId].name = name;
+            global.db.data.users[userId].age = age;
+        }
+        return true;
+    }
+    return false;
+}
+
+function isRegistered(user) {
+    // Cek di memory (yang sudah diload dari file)
+    if (global.registeredUsers[user]) {
+        return true;
+    }
+    
+    // Auto migrate dari sistem lama (jika ada)
+    if (global.db.data.rpg && global.db.data.rpg[user]) {
+        if (!global.db.data.users) global.db.data.users = {};
+        if (!global.db.data.users[user]) {
+            global.db.data.users[user] = {
+                registered: true,
+                regDate: Date.now(),
+                name: `User${user}`,
+                age: 18,
+                ...global.db.data.rpg[user]
+            };
+            console.log(`✅ Auto-migrated user: ${user}`);
+        }
+        
+        // Simpan ke sistem registrasi baru
+        global.registeredUsers[user] = {
+            registered: true,
+            regDate: Date.now(),
+            name: `User${user}`,
+            age: 18
+        };
+        saveRegisteredUsers();
+        
+        return true;
+    }
+    
+    return false;
+}
+
+function initUser(user) {
+    if (!global.db.data.users) global.db.data.users = {};
+    if (!global.db.data.users[user]) {
+        global.db.data.users[user] = {
+            registered: false,
+            regDate: 0,
+            name: '',
+            age: 0,
+            uang: 0,
+            exp: 0,
+            level: 1,
+            stamina: 10,
+            ikan: 0,
+            daging: 0,
+            emas: 0,
+            batu: 0,
+            lastDaily: 0,
+            quests: [],
+            pet: null,
+            marriedTo: null,
+            inventory: {},
+        };
+    }
+    return global.db.data.users[user];
+}
+
 function getQuotedImage(m) {
-  if (m.message?.imageMessage) return m; // kirim gambar langsung
-  if (m.quoted && m.quoted.message?.imageMessage) return m.quoted; // reply gambar
-  if (m.message?.extendedTextMessage?.contextInfo?.quotedMessage?.imageMessage)
-    return { message: m.message.extendedTextMessage.contextInfo.quotedMessage };
-  return null;
+if (m.message?.imageMessage) return m; // kirim gambar langsung
+if (m.quoted && m.quoted.message?.imageMessage) return m.quoted; // reply gambar
+if (m.message?.extendedTextMessage?.contextInfo?.quotedMessage?.imageMessage)
+return { message: m.message.extendedTextMessage.contextInfo.quotedMessage };
+return null;
+}
+
+// ==============================
+// Helper Function
+// ==============================
+function pickRandom(list) {
+return list[Math.floor(Math.random() * list.length)];
 }
 
 
-async function drawBoard(game) {
-  const size = 600;
-  const canvas = createCanvas(size, size);
-  const ctx = canvas.getContext("2d");
 
-  // Background board ular tangga
-  const board = await loadImage("./media/ulartangga.png"); // gambar papan
-  ctx.drawImage(board, 0, 0, size, size);
-
-  // Warna/ikon untuk setiap pemain
-  const colors = ["red", "blue", "green", "purple"];
-  game.players.forEach((p, i) => {
-    const pos = game.positions[p];
-    if (pos < 1) return;
-
-    // Hitung koordinat kotak (board 10x10)
-    const row = Math.floor((pos - 1) / 10);
-    let col = (pos - 1) % 10;
-    if (row % 2 === 1) col = 9 - col; // zigzag
-
-    const x = col * (size / 10) + 30;
-    const y = size - (row * (size / 10) + 30);
-
-    // Gambar lingkaran sebagai token pemain
-    ctx.fillStyle = colors[i % colors.length];
-    ctx.beginPath();
-    ctx.arc(x, y, 20, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Label nama kecil
-    ctx.fillStyle = "white";
-    ctx.font = "bold 14px Arial";
-    ctx.fillText(i + 1, x - 5, y + 5); // angka pemain
-  });
-
-  return canvas.toBuffer();
-}
-
-
-// Tambahan di initRPG
 function initRPG(user) {
 if (!global.db.data.rpg[user]) {
 global.db.data.rpg[user] = {
@@ -84,9 +185,9 @@ daging: 0,
 emas: 0,
 batu: 0,
 lastDaily: 0,
-quests: [], // array of active quests
-pet: null, // {type: 'anjing', level:1}
-marriedTo: null, // nomor pasangan
+quests: [],
+pet: null,
+marriedTo: null,
 inventory: {},
 };
 }
@@ -95,7 +196,6 @@ return global.db.data.rpg[user];
 
 
 function checkLevelUp(user, m, vinss) {
-// auto level up while exp cukup
 let needed = user.level * 100;
 let leveled = false;
 while (user.exp >= needed) {
@@ -107,7 +207,6 @@ leveled = true;
 }
 if (leveled) {
 try {
-// send message to the same chat if m available
 if (m && vinss) {
 vinss.sendMessage(m.key.remoteJid, { text: `🎉 Selamat! Kamu naik ke level ${user.level}! Stamina max bertambah!` }, { quoted: m });
 }
@@ -155,9 +254,6 @@ m.reply = async (text) => {
 return vinss.sendMessage(m.key.remoteJid, { text }, { quoted: m });
 };
 
-// =============================
-// 📩 Ambil isi pesan
-// =============================
 const mtype = Object.keys(m.message)[0];
 const body =
 mtype === "conversation"
@@ -180,24 +276,19 @@ m.message.listResponseMessage?.singleSelectReply?.selectedRowId ||
 ""
 : "";
 
+const text = body || "";
 const budy = typeof body === "string" ? body.trim() : "";
 
 const prefix = global.prefix;
-// ✅ Parsing command dan args lebih aman
 let command = null;
 let args = [];
 if (budy.startsWith(prefix)) {
-  const sliced = budy.slice(prefix.length).trim().split(/ +/);
-  command = sliced.shift().toLowerCase();
-  args = sliced;
+const sliced = budy.slice(prefix.length).trim().split(/ +/);
+command = sliced.shift().toLowerCase();
+args = sliced;
 }
-const q = args.join(" ");
+const q = args.join(" "); 
 
-if (!command) return; // bukan command
-
-// =============================
-// 👤 Info Pengirim
-// =============================
 const from = m.key.remoteJid;
 const botNumber = vinss.decodeJid(vinss.user.id);
 const isGroup = from.endsWith("@g.us");
@@ -208,15 +299,11 @@ const sender = m.key.fromMe
 ? vinss.decodeJid(m.key.participant || m.participant)
 : vinss.decodeJid(m.key.remoteJid);
 
-// filter nomor agar valid
 const rawNumber = sender.split("@")[0];
 const senderNumber = rawNumber.startsWith("62")
 ? rawNumber
 : rawNumber.replace(/\D/g, "");
 
-// =============================
-// 👥 Info Grup
-// =============================
 let groupMetadata = {};
 let groupOwner = "";
 let groupAdmins = [];
@@ -236,66 +323,65 @@ const isGroupOwner = isGroup ? sender === groupOwner : false;
 const isBotOwner = global.owner.includes(senderNumber);
 const isOwner = isBotOwner;
 
-//================= CEK FUNGSI ====================//
-// ...existing code...
-if (
-  isGroup &&
-  global.db.data.chats[from]?.antilink &&
-  !isAdmins &&
-  !isOwner &&
-  !isGroupOwner
-) {
-  // Deteksi link (regex sederhana)
-  const linkRegex = /(https?:\/\/[^\s]+|chat\.whatsapp\.com\/[^\s]+)/i;
-  if (linkRegex.test(budy)) {
-    if (groupAdmins.includes(botNumber)) {
-      try {
-        console.log('[ANTILINK] Akan hapus pesan:');
-        console.log('remoteJid:', from);
-        console.log('id:', m.key.id);
-        console.log('participant:', m.key.participant || sender);
-        console.log('fromMe:', false);
-        await vinss.sendMessage(from, {
-          delete: {
-            remoteJid: from,
-            fromMe: false,
-            id: m.key.id,
-            participant: m.key.participant || sender,
-          },
-        });
-        console.log('[ANTILINK] Selesai hapus pesan:');
-        console.log('remoteJid:', from);
-        console.log('id:', m.key.id);
-        console.log('participant:', m.key.participant || sender);
-        console.log('fromMe:', false);
-        console.log("✅ Pesan link berhasil dihapus!");
-      } catch (e) {
-        console.error("❌ Gagal hapus pesan antilink:", e);
-      }
-    } else {
-      console.log("⚠️ Bot bukan admin, tidak bisa hapus pesan!");
-    }
-    return; 
-  }
-  }
+const botInGroup = isGroup ? groupMetadata.participants.find(p => p.id === botNumber) : null;
+const isBotAdmin = isGroup ? !!botInGroup?.admin : false;
+
+if (!global.db.groups) global.db.groups = {};
+if (!global.db.groups[from]) global.db.groups[from] = { antilink: false };
+
+let set = global.db.groups[from];
 
 
+// ================== PROTEKSI LINK ==================
+if (global.antilink && text) {
+          const isLink = text.match(/(https?:\/\/[^\s]+)/gi);
+          if (isLink && !isAdmins && !isGroupOwner) {
+            // try delete message
+            try {
+              await vinss.sendMessage(from, {
+                delete: {
+                  remoteJid: from,
+                  fromMe: false,
+                  id: m.key.id,
+                  participant: m.key.participant,
+                },
+              });
+            } catch {}
+            await vinss.sendMessage(
+              from,
+              {
+                text: `🚫 *Link terdeteksi!* Pesan dari @${senderNumber} sudah dihapus.`,
+                mentions: [sender],
+              },
+              { quoted: m }
+            );
+          }
+        }
 
 
-// =============================
-// 📜 Log
-// =============================
-console.log(
-chalk.cyan(
-`👉 Cmd: ${command} | From: ${senderNumber} | Owner: ${isOwner} | Admin: ${isAdmins} | GroupOwner: ${isGroupOwner} | Group: ${isGroup}`
-)
-);
-
+if (!command) return;
 // =============================
 // 🔧 Command Handler
 // =============================
 switch (command) {
+
 case "menu": {
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
+const reactions = ['👍', '❤️', '🔥', '🎮', '🤖'];
+for (let i = 0; i < reactions.length; i++) {
+setTimeout(async () => {
+await vinss.sendMessage(from, {
+react: {
+text: reactions[i],
+key: m.key
+}
+});
+}, i * 1000);
+}
+
+setTimeout(async () => {
 let greeting = getGreeting();
 let uptime = getUptime();
 let menuText = `
@@ -318,6 +404,16 @@ ${greeting}, @${senderNumber} 👋
 │ • ${prefix}bc <teks>
 │ • ${prefix}getdb
 │ • ${prefix}getsession
+│ • ${prefix}sysinfo
+│ • ${prefix}leave
+│ • ${prefix}leaveall
+│ • ${prefix}ssweb <url>
+│ • ${prefix}readqr (reply gambar QR)
+│ • ${prefix}block @tag
+│ • ${prefix}unblock @tag
+│ • ${prefix}clearall
+│ • ${prefix}uptime
+│ • ${prefix}join <linkgc>
 ╰❒
 
 ╭─❒ *GROUP MENU*
@@ -338,30 +434,35 @@ ${greeting}, @${senderNumber} 👋
 │ • ${prefix}onlyadmin
 │ • ${prefix}opengroup
 │ • ${prefix}mute / ${prefix}unmute
-│ • ${prefix}antispam
 │ • ${prefix}groupinfo
+│ • ${prefix}lockgroup / ${prefix}unlockgroup
 ╰❒
 
-╭─❒ *TOOLS MENU*
+╭─❒ *TOOLS / MAKER*
 │ • ${prefix}shortlink <url>
 │ • ${prefix}translate <lang> <teks>
-│ • ${prefix}removebg (reply foto)
 │ • ${prefix}tourl (reply foto)
-│ • ${prefix}webp2mp4 (reply stiker)
 │ • ${prefix}ssweb <url>
-│ • ${prefix}readqr (reply QR)
+│ • ${prefix}styletext <teks>
+│ • ${prefix}ringtone <judul>
+│ • ${prefix}brat <teks>
+│ • ${prefix}iqc <teks>
 ╰❒
 
 ╭─❒ *DOWNLOADER / MEDIA*
+│ • ${prefix}tiktok <url>
+│ • ${prefix}instagram <url>
+│ • ${prefix}telesticker <url>
 │ • ${prefix}pinterest <query>
 │ • ${prefix}wallpaper <query>
+│ • ${prefix}wallpaper2 <query>
 │ • ${prefix}wikimedia <query>
+│ • ${prefix}wikimedia2 <query>
 │ • ${prefix}quotesanime
-│ • ${prefix}aiovideodl <url>
-│ • ${prefix}igstalk <username>
+│ • ${prefix}stalkig <username>
 ╰❒
 
-╭─❒ *RPG MENU*
+╭─❒ *RPG & GAME (Group Only)*
 │ • ${prefix}profile
 │ • ${prefix}work
 │ • ${prefix}fish
@@ -386,24 +487,39 @@ ${greeting}, @${senderNumber} 👋
 │ • ${prefix}marry @user
 │ • ${prefix}divorce
 │ • ${prefix}ojek
+│ • ${prefix}roll
 ╰❒
-
 
 ℹ️ Gunakan prefix: *${prefix}* sebelum command.
 `;
-
+const thumbnailBuffer = fs.readFileSync("./media/thumbnail.png");
 await vinss.sendMessage(
 from,
 {
-image: { url: global.thumb }, // ✅ thumbnail dari config
+document: thumbnailBuffer,
+fileName: `${global.ucapanWaktu} - ${global.botName} Command List.pdf`,
+mimetype: "application/pdf",
+jpegThumbnail: thumbnailBuffer,
+fileLength: '100000000000000',
+pageCount: '999',
 caption: menuText,
 mentions: [sender],
+contextInfo: {
+mentionedJid: [sender, '0@s.whatsapp.net', global.ownerNumber[0] + '@s.whatsapp.net'],
+externalAdReply: {
+title: global.author,
+body: global.packname,
+thumbnailUrl: global.profile,
+mediaType: 1,
+mediaUrl: global.my.gh,
+}
+}
 },
 { quoted: m }
 );
+}, 5000); 
 }
 break;
-
 
 case "owner":
 for (let no of global.owner) {
@@ -420,6 +536,57 @@ vcard: `BEGIN:VCARD\nVERSION:3.0\nFN:Owner Bot\nTEL;type=CELL;type=VOICE;waid=${
 }
 break;
 
+case "register": {
+    // Cek apakah sudah terdaftar di sistem persist
+    if (isRegistered(senderNumber)) {
+        let userData = global.registeredUsers[senderNumber] || initUser(senderNumber);
+        return m.reply(`✅ Kamu sudah terdaftar!\n\n👤 Nama: ${userData.name}\n🎂 Umur: ${userData.age}\n📅 Bergabung: ${new Date(userData.regDate).toLocaleDateString()}`);
+    }
+
+    let name = args[0];
+    let age = parseInt(args[1]);
+
+    if (!name || !age || age < 5 || age > 100) {
+        return m.reply(`⚠️ *FORMAT REGISTRASI*\n\nGunakan: *${prefix}register <nama> <umur>*\n\nContoh: *${prefix}register Vinss 18*\n\n❌ Umur harus antara 5-100 tahun!`);
+    }
+
+    if (registerUser(senderNumber, name, age)) {
+        m.reply(`🎉 *REGISTRASI BERHASIL!*\n\n👤 Nama: ${name}\n🎂 Umur: ${age}\n💰 Bonus: 1000 uang\n📅 Tanggal: ${new Date().toLocaleDateString()}\n\n🎮 Sekarang kamu bisa menggunakan semua fitur bot!\nKetik *${prefix}menu* untuk melihat daftar fitur.`);
+    } else {
+        m.reply("❌ Gagal registrasi! Silahkan coba lagi.");
+    }
+}
+break;
+case "unregister": {
+if (!isOwner) return m.reply(global.mess.owner);
+
+let target = args[0] || senderNumber;
+if (target.includes('@')) target = target.split('@')[0];
+
+if (global.db.data.users && global.db.data.users[target]) {
+global.db.data.users[target].registered = false;
+m.reply(`✅ User ${target} berhasil diunregister!`);
+} else {
+m.reply("❌ User tidak ditemukan di database!");
+}
+}
+break;
+
+case "migrateusers": {
+if (!isOwner) return m.reply(global.mess.owner);
+
+let migrated = 0;
+if (global.db.data.rpg) {
+for (let userId in global.db.data.rpg) {
+if (!isRegistered(userId)) {
+registerUser(userId, `User${userId}`, 18);
+migrated++;
+}
+}
+}
+m.reply(`✅ Berhasil migrate ${migrated} pengguna lama ke sistem registrasi baru!`);
+}
+break;
 //================= OWNER MENU =================//
 case "addowner":
 if (!(isOwner || isGroupOwner)) return m.reply(global.mess.owner);
@@ -559,9 +726,9 @@ if (!(isOwner || isGroupOwner)) return m.reply(global.mess.owner);
 await vinss.sendMessage(
 from,
 {
-document: fs.readFileSync("./database/database.json"),
-mimetype: "application/json",
-fileName: "database.json",
+document: { url: './database/database.json' },
+mimetype: 'application/json',
+fileName: 'database.json',
 },
 { quoted: m }
 );
@@ -617,9 +784,9 @@ if (!(isOwner || isGroupOwner)) return m.reply(global.mess.owner);
 await vinss.sendMessage(
 from,
 {
-document: fs.readFileSync("./vinssCreds/creds.json"),
-mimetype: "application/json",
-fileName: "session.json",
+document: { url: './vinssCreds/creds.json' },
+mimetype: 'application/json',
+fileName: 'session.json',
 },
 { quoted: m }
 );
@@ -708,67 +875,117 @@ if (!invite) return m.reply("❌ Link tidak valid!");
 await vinss.groupAcceptInvite(invite);
 m.reply("✅ Bot berhasil join grup!");
 break;
+//================= ISLAMIC MENU =================//
+// =========================
+// FITUR DOA HARIAN
+// =========================
+case 'doaharian': {
+try {
+await vinss.sendMessage(from, { text: global.mess.wait }, { quoted: m });
+
+const base = global.APIs.botcahx;
+const key = global.APIKeys[base];
+const url = `${base}/api/muslim/doaharian?apikey=${key}`;
+const { data } = await axios.get(url);
+
+// Debugging isi respons
+// console.log(JSON.stringify(data, null, 2));
+
+if (!data || !data.result || !Array.isArray(data.result.data)) {
+return vinss.sendMessage(from, { text: "❌ Data doa tidak ditemukan!" }, { quoted: m });
+}
+
+const doaList = data.result.data;
+const doa = doaList[Math.floor(Math.random() * doaList.length)];
+
+let teks = `
+📿 *Doa Harian* 📿
+────────────────────
+📖 Judul: ${doa.title || "-"}
+🕌 Arab: ${doa.arabic || "-"}
+📝 Latin: ${doa.latin || "-"}
+💬 Arti: ${doa.translation || "-"}
+`.trim();
+
+await vinss.sendMessage(from, { text: teks }, { quoted: m });
+
+} catch (e) {
+console.error("❌ Error doaharian:", e);
+await vinss.sendMessage(from, { text: "❌ Terjadi kesalahan saat mengambil doa harian!" }, { quoted: m });
+}
+break;
+}
+
 //================= MAKER MENU =================//
 case "iqc": {
-  if (!q) return m.reply("⚠️ Masukkan teks untuk IQC maker!\nContoh: .iqc Love");
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
+if (!q) return m.reply("⚠️ Masukkan teks untuk IQC maker!\nContoh: .iqc Love");
 
-  try {
-    let base = global.APIs.botcahx;
-    let key = global.APIKeys[base];
-    let apiUrl = `${base}api/maker/iqc?text=${encodeURIComponent(q)}&apikey=${key}`;
+try {
+let base = global.APIs.botcahx;
+let key = global.APIKeys[base];
+let apiUrl = `${base}api/maker/iqc?text=${encodeURIComponent(q)}&apikey=${key}`;
 
-    let res = await fetch(apiUrl);
-    let data = await res.json();
+let res = await fetch(apiUrl);
+let data = await res.json();
 
-    console.log("DEBUG IQC =>", data);
+console.log("DEBUG IQC =>", data);
 
-    if (!data.status || !data.result) {
-      return m.reply("❌ Gagal membuat IQC image!");
-    }
+if (!data.status || !data.result) {
+return m.reply("❌ Gagal membuat IQC image!");
+}
 
-    let imageUrl = data.result; // tergantung format respons; bisa `data.result.image`, atau langsung URL
+let imageUrl = data.result; // tergantung format respons; bisa `data.result.image`, atau langsung URL
 
-    await vinss.sendMessage(
-      from,
-      {
-        image: { url: imageUrl },
-        caption: `✨ IQC Maker: ${q}`
-      },
-      { quoted: m }
-    );
-  } catch (e) {
-    console.error("❌ Error iqc:", e);
-    m.reply("❌ Terjadi kesalahan saat membuat IQC image!");
-  }
+await vinss.sendMessage(
+from,
+{
+image: { url: imageUrl },
+caption: `✨ IQC Maker: ${q}`
+},
+{ quoted: m }
+);
+} catch (e) {
+console.error("❌ Error iqc:", e);
+m.reply("❌ Terjadi kesalahan saat membuat IQC image!");
+}
 }
 break;
 
 case "brat": {
-  if (!q) return m.reply("⚠️ Masukkan teks untuk Brat Maker!\nContoh: .brat Love");
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
+if (!q) return m.reply("⚠️ Masukkan teks untuk Brat Maker!\nContoh: .brat Love");
 
-  try {
-    let base = global.APIs.botcahx;
-    let key = global.APIKeys[base];
-    let apiUrl = `${base}api/maker/brat?text=${encodeURIComponent(q)}&apikey=${key}`;
+try {
+let base = global.APIs.botcahx;
+let key = global.APIKeys[base];
+let apiUrl = `${base}api/maker/brat?text=${encodeURIComponent(q)}&apikey=${key}`;
 
-    // langsung kirim tanpa parse JSON
-    await vinss.sendMessage(
-      from,
-      {
-        image: { url: apiUrl },
-        caption: `🎨 Brat Maker: ${q}`
-      },
-      { quoted: m }
-    );
+// langsung kirim tanpa parse JSON
+await vinss.sendMessage(
+from,
+{
+image: { url: apiUrl },
+caption: `🎨 Brat Maker: ${q}`
+},
+{ quoted: m }
+);
 
-  } catch (e) {
-    console.error("❌ Error brat:", e);
-    m.reply("❌ Terjadi kesalahan saat membuat Brat image!");
-  }
+} catch (e) {
+console.error("❌ Error brat:", e);
+m.reply("❌ Terjadi kesalahan saat membuat Brat image!");
+}
 }
 break;
 //================= GROUP MENU =================//
 case "kick":
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!isGroup) return m.reply(global.mess.group);
 if (!(isOwner || isGroupOwner || isAdmins)) return m.reply(global.mess.owner);
 if (!m.message.extendedTextMessage?.contextInfo?.mentionedJid)
@@ -780,6 +997,9 @@ m.reply("✅ Member berhasil dikeluarkan!");
 break;
 
 case "add":
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!isGroup) return m.reply(global.mess.group);
 if (!(isOwner || isGroupOwner || isAdmins)) return m.reply(global.mess.owner);
 let nomor = budy.split(" ")[1];
@@ -793,6 +1013,9 @@ m.reply("❌ Gagal menambahkan user!");
 break;
 
 case "promote":
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!isGroup) return m.reply(global.mess.group);
 if (!(isOwner || isGroupOwner || isAdmins)) return m.reply(global.mess.owner);
 if (!m.message.extendedTextMessage?.contextInfo?.mentionedJid)
@@ -804,6 +1027,9 @@ m.reply("✅ Berhasil promote!");
 break;
 
 case "demote":
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!isGroup) return m.reply(global.mess.group);
 if (!(isOwner || isGroupOwner || isAdmins)) return m.reply(global.mess.owner);
 if (!m.message.extendedTextMessage?.contextInfo?.mentionedJid)
@@ -815,6 +1041,9 @@ m.reply("✅ Berhasil demote!");
 break;
 
 case "tagall":
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!isGroup) return m.reply(global.mess.group);
 if (!(isOwner || isGroupOwner || isAdmins)) return m.reply(global.mess.owner);
 let teksTag = `📢 *Tag All* oleh Admin\n\n`;
@@ -825,6 +1054,9 @@ await vinss.sendMessage(from, { text: teksTag, mentions: groupMetadata.participa
 break;
 
 case "hidetag":
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!isGroup) return m.reply(global.mess.group);
 if (!(isOwner || isGroupOwner || isAdmins)) return m.reply(global.mess.owner);
 let htText = budy.slice(command.length + 1);
@@ -833,6 +1065,9 @@ await vinss.sendMessage(from, { text: htText, mentions: groupMetadata.participan
 break;
 
 case "setname":
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!isGroup) return m.reply(global.mess.group);
 if (!(isOwner || isGroupOwner)) return m.reply(global.mess.owner);
 let newGcName = budy.slice(command.length + 1);
@@ -842,6 +1077,9 @@ m.reply(`✅ Nama grup berhasil diubah menjadi *${newGcName}*`);
 break;
 
 case "setdesc":
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!isGroup) return m.reply(global.mess.group);
 if (!(isOwner || isGroupOwner || isAdmins)) return m.reply(global.mess.owner);
 let newDesc = budy.slice(command.length + 1);
@@ -851,6 +1089,9 @@ m.reply("✅ Deskripsi grup berhasil diubah!");
 break;
 
 case "setppgc":
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!isGroup) return m.reply(global.mess.group);
 if (!(isOwner || isGroupOwner || isAdmins)) return m.reply(global.mess.owner);
 if (!m.message.imageMessage) return m.reply("⚠ Kirim/reply foto dengan caption *.setppgc*");
@@ -865,6 +1106,9 @@ m.reply("❌ Gagal mengganti foto grup!");
 break;
 
 case "linkgc":
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!isGroup) return m.reply(global.mess.group);
 if (!(isOwner || isGroupOwner || isAdmins)) return m.reply(global.mess.owner);
 let inviteCode = await vinss.groupInviteCode(from);
@@ -872,40 +1116,45 @@ m.reply(`🔗 *Link Group:*\nhttps://chat.whatsapp.com/${inviteCode}`);
 break;
 
 case "revoke":
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!isGroup) return m.reply(global.mess.group);
 if (!(isOwner || isGroupOwner)) return m.reply(global.mess.owner);
 await vinss.groupRevokeInvite(from);
 m.reply("✅ Link grup berhasil direset!");
 break;
 
+case "antilink":
+    if (!isGroup) return m.reply(global.mess.group);
+    if (!(isOwner || isGroupOwner || isAdmins)) return m.reply(global.mess.admin);
+
+    if (args[0] === "on") {
+        global.antilink = true;
+        vinss.sendMessage(from, { text: "✅ Antilink berhasil diaktifkan!" }, { quoted: m });
+    } else if (args[0] === "off") {
+        global.antilink = false;
+        vinss.sendMessage(from, { text: "❌ Antilink berhasil dimatikan!" }, { quoted: m });
+    } else {
+        vinss.sendMessage(from, { text: `ℹ Gunakan: ${prefix}antilink on / off` }, { quoted: m });
+    }
+    break;
+
+
 case "listadmin":
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!isGroup) return m.reply("⚠ Command ini hanya untuk grup!");
 let listAdmin = groupAdmins.map((id, i) => `${i + 1}. @${id.split("@")[0]}`).join("\n");
 m.reply(`👑 *Daftar Admin Grup:*\n\n${listAdmin}`, { mentions: groupAdmins });
 break;
 
-case "antilink": {
-  if (!isGroup) return m.reply("❌ Fitur hanya untuk grup!");
-  if (!isAdmins && !isOwner && !isGroupOwner)
-    return m.reply("❌ Hanya admin grup / owner bot yang bisa pakai command ini!");
-
-  if (!global.db.data.chats[from]) global.db.data.chats[from] = {};
-
-  if (args[0] === "on") {
-    global.db.data.chats[from].antilink = true;
-    m.reply("✅ Antilink berhasil *AKTIF* di grup ini!");
-  } else if (args[0] === "off") {
-    global.db.data.chats[from].antilink = false;
-    m.reply("❌ Antilink berhasil *NONAKTIF* di grup ini!");
-  } else {
-    let status = global.db.data.chats[from].antilink ? "AKTIF" : "NONAKTIF";
-    m.reply(`ℹ️ Gunakan: ${prefix}antilink on / off\n📌 Status sekarang: *${status}*`);
-  }
-}
-break;
-
 // Only Admin (hanya admin bisa kirim pesan)
 case "onlyadmin":
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!isGroup) return m.reply("⚠ Command ini hanya untuk grup!");
 if (!isAdmins && !isOwner) return m.reply("⚠ Hanya admin/owner yang bisa aktifkan!");
 await vinss.groupSettingUpdate(from, "announcement");
@@ -914,6 +1163,9 @@ break;
 
 // Open Group (buka chat untuk semua)
 case "opengroup":
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!isGroup) return m.reply("⚠ Command ini hanya untuk grup!");
 if (!isAdmins && !isOwner) return m.reply("⚠ Hanya admin/owner yang bisa buka!");
 await vinss.groupSettingUpdate(from, "not_announcement");
@@ -922,6 +1174,9 @@ break;
 
 // Mute Bot (bot ignore semua pesan di grup)
 case "mute":
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!isGroup) return m.reply("⚠ Command ini hanya untuk grup!");
 if (!isAdmins && !isOwner) return m.reply("⚠ Hanya admin/owner yang bisa mute!");
 global.db.data.chats[from].mute = true;
@@ -929,6 +1184,9 @@ m.reply("🤐 Bot dimute di grup ini!");
 break;
 
 case "unmute":
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!isGroup) return m.reply("⚠ Command ini hanya untuk grup!");
 if (!isAdmins && !isOwner) return m.reply("⚠ Hanya admin/owner yang bisa unmute!");
 global.db.data.chats[from].mute = false;
@@ -937,6 +1195,9 @@ break;
 
 // Welcome ON/OFF
 case "welcome":
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!isGroup) return m.reply("⚠ Command ini hanya untuk grup!");
 if (!isAdmins && !isOwner) return m.reply("⚠ Hanya admin/owner yang bisa set welcome!");
 global.db.data.chats[from].welcome = !global.db.data.chats[from].welcome;
@@ -945,6 +1206,9 @@ break;
 
 // Auto Kick Member yang SPAM (rare)
 case "antispam":
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!isGroup) return m.reply("⚠ Command ini hanya untuk grup!");
 if (!isAdmins && !isOwner) return m.reply("⚠ Hanya admin/owner yang bisa aktifkan!");
 global.db.data.chats[from].antispam = !global.db.data.chats[from].antispam;
@@ -953,6 +1217,9 @@ break;
 
 // Group Info Lengkap
 case "groupinfo":
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!isGroup) return m.reply("⚠ Command ini hanya untuk grup!");
 let info = `📌 *Group Info* 📌
 • Nama: ${groupMetadata.subject}
@@ -966,6 +1233,9 @@ break;
 
 // Lock Group (tidak bisa tambah/hapus member)
 case "lockgroup":
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!isGroup) return m.reply("⚠ Command ini hanya untuk grup!");
 if (!isAdmins && !isOwner) return m.reply("⚠ Hanya admin/owner yang bisa lock!");
 await vinss.groupSettingUpdate(from, "locked");
@@ -973,6 +1243,9 @@ m.reply("🔒 Grup berhasil dikunci (tidak bisa tambah/hapus member).");
 break;
 
 case "unlockgroup":
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!isGroup) return m.reply("⚠ Command ini hanya untuk grup!");
 if (!isAdmins && !isOwner) return m.reply("⚠ Hanya admin/owner yang bisa unlock!");
 await vinss.groupSettingUpdate(from, "unlocked");
@@ -980,74 +1253,55 @@ m.reply("🔓 Grup berhasil dibuka kembali.");
 break;
 
 //================= TOLS MENU =================//
-case "remini": {
-  if (!m.message.imageMessage) return m.reply("⚠ Kirim/reply foto dengan caption *.remini*");
-
-  try {
-    let media = await downloadMediaMessage(m, "buffer", {}, { logger: vinss.logger });
-    let buffer = await remini(media, "recolor"); // bisa juga 'enhance', 'recolor'
-    await vinss.sendMessage(from, { image: buffer, caption: "✅ Hasil Remini" }, { quoted: m });
-  } catch (e) {
-    console.error(e);
-    m.reply("❌ Gagal proses remini!");
-  }
-}
-break;
-
 case "styletext": {
-  if (!q) return m.reply("⚠ Masukkan teks!\nContoh: .styletext hello");
-
-  try {
-    let styles = await styletext(q);
-    let teks = "✨ *Hasil StyleText:*\n\n";
-    styles.forEach((s, i) => {
-      teks += `${i+1}. ${s.name}\n${s.result}\n\n`;
-    });
-    m.reply(teks);
-  } catch (e) {
-    console.error(e);
-    m.reply("❌ Gagal ambil styletext!");
-  }
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
 }
-break;
+if (!q) return m.reply("⚠ Masukkan teks!\nContoh: .styletext hello");
 
-case "hitamkan": {
-  if (!m.message.imageMessage) return m.reply("⚠ Kirim/reply foto dengan caption *.hitamkan*");
-
-  try {
-    let media = await downloadMediaMessage(m, "buffer", {}, { logger: vinss.logger });
-    let buffer = await hitamkan(media, "coklat"); // filter bisa ganti
-    await vinss.sendMessage(from, { image: buffer, caption: "✅ Hasil Filter Hitamkan" }, { quoted: m });
-  } catch (e) {
-    console.error(e);
-    m.reply("❌ Gagal hitamkan foto!");
-  }
+try {
+let styles = await styletext(q);
+let teks = "✨ *Hasil StyleText:*\n\n";
+styles.forEach((s, i) => {
+teks += `${i+1}. ${s.name}\n${s.result}\n\n`;
+});
+m.reply(teks);
+} catch (e) {
+console.error(e);
+m.reply("❌ Gagal ambil styletext!");
+}
 }
 break;
 
 case "ringtone": {
-  if (!q) return m.reply("⚠ Masukkan judul ringtone!\nContoh: .ringtone iphone");
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
+if (!q) return m.reply("⚠ Masukkan judul ringtone!\nContoh: .ringtone iphone");
 
-  try {
-    let res = await ringtone(q);
-    if (!res.length) return m.reply("❌ Tidak ditemukan!");
+try {
+let res = await ringtone(q);
+if (!res.length) return m.reply("❌ Tidak ditemukan!");
 
-    let pick = res[0]; // ambil pertama
-    await vinss.sendMessage(from, {
-      audio: { url: pick.audio },
-      mimetype: "audio/mp4",
-      fileName: `${pick.title}.mp3`,
-      caption: `🎶 *Ringtone*\n📌 Judul: ${pick.title}\n🔗 ${pick.source}`
-    }, { quoted: m });
-  } catch (e) {
-    console.error(e);
-    m.reply("❌ Gagal ambil ringtone!");
-  }
+let pick = res[0]; // ambil pertama
+await vinss.sendMessage(from, {
+audio: { url: pick.audio },
+mimetype: "audio/mp4",
+fileName: `${pick.title}.mp3`,
+caption: `🎶 *Ringtone*\n📌 Judul: ${pick.title}\n🔗 ${pick.source}`
+}, { quoted: m });
+} catch (e) {
+console.error(e);
+m.reply("❌ Gagal ambil ringtone!");
+}
 }
 break;
 
 
 case "shortlink":
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!args[0]) return m.reply("⚠ Masukkan link!\nContoh: .shortlink https://google.com");
 try {
 let short = `https://tinyurl.com/api-create.php?url=${args[0]}`;
@@ -1060,6 +1314,9 @@ m.reply("❌ Gagal membuat shortlink!");
 break;
 
 case "translate":
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (args.length < 2) return m.reply("⚠ Format: .translate <kode_bahasa> <teks>\nContoh: .translate en selamat pagi");
 const lang = args[0];
 const teksTr = args.slice(1).join(" ");
@@ -1073,49 +1330,11 @@ m.reply("❌ Gagal translate!");
 }
 break;
 
-case "removebg":
-if (!m.message.imageMessage) return m.reply("⚠ Kirim/reply foto dengan caption *.removebg*");
-try {
-const { removeBackgroundFromImageBase64 } = require("remove.bg");
-let media = await downloadMediaMessage(m, "buffer", {}, { logger: vinss.logger });
-
-// convert buffer ke base64
-let base64Img = media.toString("base64");
-
-let result = await removeBackgroundFromImageBase64({
-base64img: base64Img,
-apiKey: "free", // bisa pake "free" atau daftarin API key (gratis quota)
-size: "auto",
-type: "auto",
-});
-
-let buffer = Buffer.from(result.base64img, "base64");
-await vinss.sendMessage(from, { image: buffer, caption: "✅ Background berhasil dihapus!" }, { quoted: m });
-} catch (e) {
-console.error(e);
-m.reply("❌ Gagal menghapus background!");
-}
-break;
-
-
-case "igstalk":
-if (!args[0]) return m.reply("⚠ Masukkan username IG!\nContoh: .igstalk arielnoah");
-try {
-let res = await fetch(`https://api.popcat.xyz/instagram?user=${args[0]}`);
-let data = await res.json();
-m.reply(`📸 *Instagram Stalker*\n
-👤 Nama: ${data.full_name}
-🔖 Username: ${data.username}
-👥 Followers: ${data.followers}
-👥 Following: ${data.following}
-📌 Bio: ${data.biography}`);
-} catch (e) {
-console.error(e);
-m.reply("❌ Username tidak ditemukan!");
-}
-break;
 
 case "ssweb":
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!args[0]) return m.reply("⚠ Masukkan URL!\nContoh: .ssweb https://google.com");
 try {
 let ss = await fetch(`https://image.thum.io/get/fullpage/${args[0]}`);
@@ -1127,6 +1346,9 @@ m.reply("❌ Gagal mengambil screenshot!");
 break;
 
 case 'tourl': {
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 const mime =
 m.message?.imageMessage?.mimetype ||
 m.quoted?.message?.imageMessage?.mimetype ||
@@ -1162,136 +1384,125 @@ break;
 
 
 
-case 'webp2mp4': {
-if (!m.quoted) return m.reply('⚠ Balas stiker WEBP dengan caption *.webp2mp4*');
-const quoted = m.quoted ? m.quoted : m;
-const mime = (quoted.msg || quoted).mimetype || '';
-if (!/webp/.test(mime)) return m.reply('❌ Format salah. Balas stiker *WEBP*!');
-
-const mediaPath = await vinss.downloadAndSaveMediaMessage(quoted);
-try {
-const result = await webp2mp4File(mediaPath);
-if (!result || !result.result) return m.reply('❌ Konversi gagal.');
-await vinss.sendMessage(from, { video: { url: result.result }, caption: '✅ Konversi berhasil!' }, { quoted: m });
-} catch (e) {
-console.error(e);
-m.reply('❌ Terjadi kesalahan saat konversi WEBP ke MP4.');
-} finally {
-if (fs.existsSync(mediaPath)) fs.unlinkSync(mediaPath);
-}
-}
-break;
-
 //================= DOWNLOADER ==================//
 case "tiktok": {
-  if (!q) return m.reply("⚠ Masukkan URL TikTok!\nContoh: .tiktok https://vt.tiktok.com/xxxx");
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
+if (!q) return m.reply("⚠ Masukkan URL TikTok!\nContoh: .tiktok https://vt.tiktok.com/xxxx");
 
-  try {
-    const result = await tiktokDl(q); // ✅ pakai scraper lokal
+try {
+const result = await tiktokDl(q); // ✅ pakai scraper lokal
 
-    if (!result.status) {
-      return m.reply("❌ Gagal mengambil data TikTok!");
-    }
+if (!result.status) {
+return m.reply("❌ Gagal mengambil data TikTok!");
+}
 
-    // Ambil video no watermark HD kalau ada, fallback ke yang lain
-    let videoUrl = null;
-    let caption = `🎬 *TikTok Downloader*\n\n📌 Judul: ${result.title}\n👤 Author: ${result.author.nickname} (@${result.author.fullname})\n\n👀 Views: ${result.stats.views}\n❤️ Likes: ${result.stats.likes}\n💬 Komentar: ${result.stats.comment}\n🔄 Share: ${result.stats.share}\n⬇️ Download: ${result.stats.download}\n\n🎵 Musik: ${result.music_info.title} - ${result.music_info.author}`;
+// Ambil video no watermark HD kalau ada, fallback ke yang lain
+let videoUrl = null;
+let caption = `🎬 *TikTok Downloader*\n\n📌 Judul: ${result.title}\n👤 Author: ${result.author.nickname} (@${result.author.fullname})\n\n👀 Views: ${result.stats.views}\n❤️ Likes: ${result.stats.likes}\n💬 Komentar: ${result.stats.comment}\n🔄 Share: ${result.stats.share}\n⬇️ Download: ${result.stats.download}\n\n🎵 Musik: ${result.music_info.title} - ${result.music_info.author}`;
 
-    const vidNowm = result.data.find(v => v.type === "nowatermark_hd")
-                  || result.data.find(v => v.type === "nowatermark")
-                  || result.data.find(v => v.type === "watermark");
+const vidNowm = result.data.find(v => v.type === "nowatermark_hd")
+|| result.data.find(v => v.type === "nowatermark")
+|| result.data.find(v => v.type === "watermark");
 
-    if (vidNowm) {
-      videoUrl = vidNowm.url;
-    }
+if (vidNowm) {
+videoUrl = vidNowm.url;
+}
 
-    if (videoUrl) {
-      await vinss.sendMessage(
-        from,
-        {
-          video: { url: videoUrl },
-          mimetype: "video/mp4",
-          caption,
-        },
-        { quoted: m }
-      );
-    } else if (result.data.some(v => v.type === "photo")) {
-      // Kalau post TikTok berupa foto slide
-      for (let img of result.data.filter(v => v.type === "photo")) {
-        await vinss.sendMessage(from, { image: { url: img.url }, caption }, { quoted: m });
-      }
-    } else {
-      m.reply("❌ Tidak ada media yang bisa diunduh!");
-    }
-  } catch (e) {
-    console.error("❌ Error TikTok:", e);
-    m.reply("❌ Terjadi kesalahan saat download TikTok!");
-  }
+if (videoUrl) {
+await vinss.sendMessage(
+from,
+{
+video: { url: videoUrl },
+mimetype: "video/mp4",
+caption,
+},
+{ quoted: m }
+);
+} else if (result.data.some(v => v.type === "photo")) {
+// Kalau post TikTok berupa foto slide
+for (let img of result.data.filter(v => v.type === "photo")) {
+await vinss.sendMessage(from, { image: { url: img.url }, caption }, { quoted: m });
+}
+} else {
+m.reply("❌ Tidak ada media yang bisa diunduh!");
+}
+} catch (e) {
+console.error("❌ Error TikTok:", e);
+m.reply("❌ Terjadi kesalahan saat download TikTok!");
+}
 }
 break;
 
 case "instagram": {
-  if (!q) return m.reply("⚠ Masukkan URL Instagram!\nContoh: .instagram https://www.instagram.com/reel/xxxx");
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
+if (!q) return m.reply("⚠ Masukkan URL Instagram!\nContoh: .instagram https://www.instagram.com/reel/xxxx");
 
-  try {
-    let res = await instagramDl(q);
-    if (!res.length) return m.reply("❌ Tidak ada media yang bisa diunduh!");
+try {
+let res = await instagramDl(q);
+if (!res.length) return m.reply("❌ Tidak ada media yang bisa diunduh!");
 
-    for (let item of res) {
-      await vinss.sendMessage(from, { video: { url: item.url }, caption: `📸 ${item.title}` }, { quoted: m });
-    }
-  } catch (e) {
-    console.error(e);
-    m.reply("❌ Gagal download Instagram!");
-  }
+for (let item of res) {
+await vinss.sendMessage(from, { video: { url: item.url }, caption: `📸 ${item.title}` }, { quoted: m });
+}
+} catch (e) {
+console.error(e);
+m.reply("❌ Gagal download Instagram!");
+}
 }
 break;
 
 case "telesticker":
 case "telestik": {
-  if (!q) return m.reply("⚠️ Masukkan URL sticker Telegram!\nContoh: .telesticker https://t.me/addstickers/NamaStickerPack");
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
+if (!q) return m.reply("⚠️ Masukkan URL sticker Telegram!\nContoh: .telesticker https://t.me/addstickers/NamaStickerPack");
 
-  try {
-    let base = global.APIs.botcahx;
-    let key = global.APIKeys[base];
-    let apiUrl = `${base}api/dowloader/telesticker?url=${encodeURIComponent(q)}&apikey=${key}`;
+try {
+let base = global.APIs.botcahx;
+let key = global.APIKeys[base];
+let apiUrl = `${base}api/dowloader/telesticker?url=${encodeURIComponent(q)}&apikey=${key}`;
 
-    let res = await fetch(apiUrl);
-    let data = await res.json();
+let res = await fetch(apiUrl);
+let data = await res.json();
 
-    console.log("DEBUG TELESTICKER =>", data);
+console.log("DEBUG TELESTICKER =>", data);
 
-    if (!data.status || !data.result || !Array.isArray(data.result)) {
-      return m.reply("❌ Gagal mengambil sticker pack Telegram!");
-    }
+if (!data.status || !data.result || !Array.isArray(data.result)) {
+return m.reply("❌ Gagal mengambil sticker pack Telegram!");
+}
 
-    let caption = `📦 *Telegram Sticker Pack*
+let caption = `📦 *Telegram Sticker Pack*
 📌 Total Sticker: ${data.result.length}`;
 
-    await vinss.sendMessage(from, { text: caption }, { quoted: m });
+await vinss.sendMessage(from, { text: caption }, { quoted: m });
+let limit = 10;
+let counter = 0;
+for (let s of data.result) {
+if (!s.url) continue;
+await vinss.sendMessage(from, { sticker: { url: s.url } }, { quoted: m });
+counter++;
+if (counter >= limit) {
+await vinss.sendMessage(from, { text: `⚠️ Sticker terlalu banyak, hanya dikirim ${limit} pertama.` }, { quoted: m });
+break;
+}
+}
 
-    // Kirim semua stiker (dibatasi biar WA gak flood)
-    let limit = 10; // maksimal kirim 10 stiker biar gak spam
-    let counter = 0;
-
-    for (let s of data.result) {
-      if (!s.url) continue;
-      await vinss.sendMessage(from, { sticker: { url: s.url } }, { quoted: m });
-      counter++;
-      if (counter >= limit) {
-        await vinss.sendMessage(from, { text: `⚠️ Sticker terlalu banyak, hanya dikirim ${limit} pertama.` }, { quoted: m });
-        break;
-      }
-    }
-
-  } catch (e) {
-    console.error("❌ Error telesticker:", e);
-    m.reply("❌ Terjadi kesalahan saat mengambil sticker pack!");
-  }
+} catch (e) {
+console.error("❌ Error telesticker:", e);
+m.reply("❌ Terjadi kesalahan saat mengambil sticker pack!");
+}
 }
 break;
 
 case "pinterest":
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!args[0]) return m.reply("⚠ Masukkan kata kunci!\nContoh: .pinterest kucing lucu");
 try {
 let res = await pinterest(args.join(" "));
@@ -1305,37 +1516,46 @@ m.reply("❌ Gagal mengambil gambar Pinterest!");
 break;
 
 case "wallpaper2": {
-  if (!q) return m.reply("⚠ Masukkan kata kunci!\nContoh: .wallpaper2 anime");
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
+if (!q) return m.reply("⚠ Masukkan kata kunci!\nContoh: .wallpaper2 anime");
 
-  try {
-    let res = await wallpaper(q);
-    if (!res.length) return m.reply("❌ Tidak ditemukan!");
-    let pick = res[Math.floor(Math.random() * res.length)];
-    await vinss.sendMessage(from, { image: { url: pick.image[0] }, caption: `🖼 Wallpaper: ${pick.title}\n📌 ${pick.type}\n🔗 ${pick.source}` }, { quoted: m });
-  } catch (e) {
-    console.error(e);
-    m.reply("❌ Gagal ambil wallpaper!");
-  }
+try {
+let res = await wallpaper(q);
+if (!res.length) return m.reply("❌ Tidak ditemukan!");
+let pick = res[Math.floor(Math.random() * res.length)];
+await vinss.sendMessage(from, { image: { url: pick.image[0] }, caption: `🖼 Wallpaper: ${pick.title}\n📌 ${pick.type}\n🔗 ${pick.source}` }, { quoted: m });
+} catch (e) {
+console.error(e);
+m.reply("❌ Gagal ambil wallpaper!");
+}
 }
 break;
 
 
 case "wikimedia2": {
-  if (!q) return m.reply("⚠ Masukkan kata kunci!\nContoh: .wikimedia2 sunset");
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
+if (!q) return m.reply("⚠ Masukkan kata kunci!\nContoh: .wikimedia2 sunset");
 
-  try {
-    let res = await wikimedia(q);
-    if (!res.length) return m.reply("❌ Tidak ditemukan!");
-    let pick = res[Math.floor(Math.random() * res.length)];
-    await vinss.sendMessage(from, { image: { url: pick.image }, caption: `📚 Wikimedia: ${pick.title}\n🔗 ${pick.source}` }, { quoted: m });
-  } catch (e) {
-    console.error(e);
-    m.reply("❌ Gagal ambil dari Wikimedia!");
-  }
+try {
+let res = await wikimedia(q);
+if (!res.length) return m.reply("❌ Tidak ditemukan!");
+let pick = res[Math.floor(Math.random() * res.length)];
+await vinss.sendMessage(from, { image: { url: pick.image }, caption: `📚 Wikimedia: ${pick.title}\n🔗 ${pick.source}` }, { quoted: m });
+} catch (e) {
+console.error(e);
+m.reply("❌ Gagal ambil dari Wikimedia!");
+}
 }
 break;
 
 case "quotesanime":
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 try {
 let res = await quotesAnime();
 if (!res.length) return m.reply("❌ Tidak ditemukan!");
@@ -1348,29 +1568,112 @@ m.reply("❌ Gagal mengambil quotes anime!");
 }
 break;
 
-case "aiovideodl":
-if (!args[0]) return m.reply("⚠ Masukkan URL video!\nContoh: .aiovideodl https://...");
+// ================== STALK IG ================== //
+// ================== STALK IG ================== //
+case "stalkig": {
 try {
-let res = await aiovideodl(args[0]);
-if (!res || !res.medias) return m.reply("❌ Tidak dapat mengambil video!");
-let vid = res.medias.find(v => v.extension === "mp4");
-await vinss.sendMessage(from, { video: { url: vid.url }, caption: `✅ Video berhasil diunduh.` }, { quoted: m });
-} catch (e) {
-console.error(e);
-m.reply("❌ Gagal mengunduh video!");
+if (!q) return m.reply(`⚠️ Masukkan username IG!\nContoh: ${global.prefix}stalkig erlanrahmat_14`);
+
+await vinss.sendMessage(from, { text: global.mess.wait }, { quoted: m });
+
+// ambil base & key dari config
+const base = global.APIs.botcahx; // misal "https://api.botcahx.eu.org/"
+const key = global.APIKeys[base]; // misal "7g7LtR2M"
+
+if (!base || !key) {
+return await vinss.sendMessage(from, { text: "❌ Konfigurasi API tidak ditemukan. Cek global.js" }, { quoted: m });
+}
+
+const username = q.trim().split(/\s+/)[0];
+const url = `${base.replace(/\/$/,'')}/api/stalk/ig?username=${encodeURIComponent(username)}&apikey=${encodeURIComponent(key)}`;
+
+const res = await axios.get(url, { timeout: 15000 });
+const data = res.data;
+
+// Debug: console.log(JSON.stringify(data, null, 2));
+
+// cek variasi struktur respons
+// contoh respons yang kamu kirim:
+// { status: true, code: 200, creator: "BOTCAHX", result: { username, fullName, bio, followers, following, postsCount, photoUrl } }
+if (!data || (data.status === false) || !data.result) {
+return await vinss.sendMessage(from, { text: "❌ Gagal mengambil data Instagram!" }, { quoted: m });
+}
+
+const ig = data.result || data; // fallback
+// normalisasi nama field (kadang berbeda)
+const usernameResp = ig.username || ig.user || "-";
+const fullname = ig.fullName || ig.fullname || ig.name || "-";
+const bio = ig.bio || ig.description || "-";
+const followers = ig.followers ?? ig.followers_count ?? "-";
+const following = ig.following ?? ig.following_count ?? "-";
+const posts = ig.postsCount ?? ig.posts_count ?? ig.posts ?? "-";
+const profilePic = ig.photoUrl || ig.profile || ig.profile_pic_url || ig.photo || null;
+
+const teks = `
+📸 *Instagram Stalker*
+────────────────────
+👤 Username : ${usernameResp}
+🆔 Nama : ${fullname}
+👥 Followers: ${followers}
+👤 Following: ${following}
+📌 Postingan: ${posts}
+🔗 Bio: ${bio.length > 700 ? bio.slice(0,700) + '...' : bio}
+`.trim();
+
+// kirim dengan foto profil kalau ada, kalau tidak kirim teks saja
+if (profilePic) {
+await vinss.sendMessage(
+from,
+{
+image: { url: profilePic },
+caption: teks
+},
+{ quoted: m }
+);
+} else {
+await vinss.sendMessage(from, { text: teks }, { quoted: m });
+}
+} catch (err) {
+console.error("❌ Error stalkig:", err?.response?.data || err.message || err);
+// kirim pesan error ke user
+await vinss.sendMessage(from, { text: "❌ Terjadi kesalahan saat mengambil data Instagram!" }, { quoted: m });
+}
 }
 break;
-// ================== RPG COMMANDS (group-only + auto levelup) ==================
 
-case "profile": {
-if (!isGroup) return m.reply(global.mess.group);
-let user = initRPG(senderNumber);
-let teks = `🎮 *RPG Profile* 🎮\n👤 User: @${senderNumber}\n💰 Uang: ${user.uang}\n⭐ Level: ${user.level}\n📊 Exp: ${user.exp}\n⚡ Stamina: ${user.stamina}\n🐟 Ikan: ${user.ikan}\n🍖 Daging: ${user.daging}\n🪨 Batu: ${user.batu}\n🪙 Emas: ${user.emas}\n🐾 Pet: ${user.pet ? user.pet.type+" Lv."+user.pet.level : "Tidak punya"}\n💍 Married To: ${user.marriedTo ? user.marriedTo : "-"}`;
-await vinss.sendMessage(from, { text: teks, mentions: [sender] }, { quoted: m });
+// ================== RPG COMMANDS (group-only + auto levelup) ==================
+case "myprofile":
+case "profil": {
+    if (!isRegistered(senderNumber)) {
+        return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+    }
+    
+    let regData = global.registeredUsers[senderNumber];
+    let userData = initUser(senderNumber);
+    
+    let teks = `👤 *PROFILE USER*\n\n` +
+        `📛 Nama: ${regData.name}\n` +
+        `🎂 Umur: ${regData.age}\n` +
+        `📅 Bergabung: ${new Date(regData.regDate).toLocaleDateString()}\n` +
+        `💰 Uang: ${userData.uang}\n` +
+        `⭐ Level: ${userData.level}\n` +
+        `📊 Exp: ${userData.exp}\n` +
+        `⚡ Stamina: ${userData.stamina}\n` +
+        `🐟 Ikan: ${userData.ikan}\n` +
+        `🍖 Daging: ${userData.daging}\n` +
+        `🪙 Emas: ${userData.emas}\n` +
+        `🪨 Batu: ${userData.batu}\n` +
+        `💍 Married: ${userData.marriedTo ? 'Yes' : 'No'}\n` +
+        `🐾 Pet: ${userData.pet ? userData.pet.type + ' Lv.' + userData.pet.level : 'Tidak ada'}`;
+
+    await vinss.sendMessage(from, { text: teks, mentions: [sender] }, { quoted: m });
 }
 break;
 
 case "work": {
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!isGroup) return m.reply(global.mess.group);
 let user = initRPG(senderNumber);
 if (user.stamina <= 0) return m.reply("😴 Stamina habis! Ketik .rest untuk istirahat.");
@@ -1386,6 +1689,9 @@ checkLevelUp(user, m, vinss);
 break;
 
 case "fish": {
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!isGroup) return m.reply(global.mess.group);
 let user = initRPG(senderNumber);
 if (user.stamina <= 0) return m.reply("😴 Stamina habis! Ketik .rest untuk istirahat.");
@@ -1405,6 +1711,9 @@ checkLevelUp(user, m, vinss);
 break;
 
 case "hunt": {
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!isGroup) return m.reply(global.mess.group);
 let user = initRPG(senderNumber);
 if (user.stamina <= 0) return m.reply("😴 Stamina habis! Ketik .rest untuk istirahat.");
@@ -1424,6 +1733,9 @@ checkLevelUp(user, m, vinss);
 break;
 
 case "sell": {
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!isGroup) return m.reply(global.mess.group);
 let user = initRPG(senderNumber);
 let jualIkan = (user.ikan || 0) * 100;
@@ -1438,6 +1750,9 @@ m.reply(`💰 Kamu menjual semua item dan dapat ${total}!`);
 break;
 
 case "rest": {
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!isGroup) return m.reply(global.mess.group);
 let user = initRPG(senderNumber);
 user.stamina = 10 + user.level;
@@ -1446,6 +1761,9 @@ m.reply("😴 Kamu istirahat dan stamina kembali penuh!");
 break;
 
 case "mine": {
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!isGroup) return m.reply(global.mess.group);
 let user = initRPG(senderNumber);
 if (user.stamina <= 0) return m.reply("😴 Stamina habis! Ketik .rest untuk istirahat.");
@@ -1467,6 +1785,9 @@ checkLevelUp(user, m, vinss);
 break;
 
 case "inv": {
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!isGroup) return m.reply(global.mess.group);
 let user = initRPG(senderNumber);
 let teks = `🎒 *Inventory @${senderNumber}*\n💰 Uang: ${user.uang}\n⭐ Level: ${user.level}\n📊 Exp: ${user.exp}\n⚡ Stamina: ${user.stamina}\n\n🐟 Ikan: ${user.ikan}\n🍖 Daging: ${user.daging}\n🪨 Batu: ${user.batu}\n🪙 Emas: ${user.emas}\n\n📦 Inventory: ${JSON.stringify(user.inventory)}`;
@@ -1475,6 +1796,9 @@ await vinss.sendMessage(from, { text: teks, mentions: [sender] }, { quoted: m })
 break;
 
 case "adventure": {
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!isGroup) return m.reply(global.mess.group);
 let user = initRPG(senderNumber);
 if (user.stamina <= 0) return m.reply("😴 Stamina habis! Ketik .rest dulu.");
@@ -1498,6 +1822,9 @@ checkLevelUp(user, m, vinss);
 break;
 
 case "daily": {
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!isGroup) return m.reply(global.mess.group);
 let user = initRPG(senderNumber);
 let now = Date.now();
@@ -1513,6 +1840,9 @@ m.reply(`🎁 Kamu klaim hadiah harian: 💰 +${hadiah}`);
 break;
 
 case "gacha": {
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!isGroup) return m.reply(global.mess.group);
 let user = initRPG(senderNumber);
 if (user.stamina <= 0) return m.reply("😴 Stamina habis! Ketik .rest dulu.");
@@ -1528,6 +1858,9 @@ checkLevelUp(user, m, vinss);
 break;
 
 case "casino": {
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!isGroup) return m.reply(global.mess.group);
 let user = initRPG(senderNumber);
 let bet = parseInt(args[0]);
@@ -1545,6 +1878,9 @@ m.reply(`🎲 Kamu kalah! Uang -${bet}`);
 break;
 
 case "heal": {
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!isGroup) return m.reply(global.mess.group);
 let user = initRPG(senderNumber);
 if (user.daging > 0) {
@@ -1561,10 +1897,10 @@ m.reply("⚠️ Kamu tidak punya makanan untuk dimakan!");
 }
 break;
 
-// =============== NEW FEATURES ===============
-
-// Quest system
 case "quest": {
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!isGroup) return m.reply(global.mess.group);
 let user = initRPG(senderNumber);
 // jika tidak ada quest aktif, generate baru
@@ -1589,6 +1925,9 @@ break;
 
 // Dungeon / Boss
 case "dungeon": {
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!isGroup) return m.reply(global.mess.group);
 let user = initRPG(senderNumber);
 if (user.stamina < 5) return m.reply("⚠️ Butuh stamina minimal 5 untuk masuk dungeon!");
@@ -1612,6 +1951,9 @@ break;
 
 // Pet system
 case "adopt": {
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!isGroup) return m.reply(global.mess.group);
 let user = initRPG(senderNumber);
 if (user.pet) return m.reply("⚠️ Kamu sudah punya pet!");
@@ -1625,6 +1967,9 @@ m.reply(`🐾 Kamu mengadopsi ${type}! Pet akan membantu aktivitas tertentu.`);
 break;
 
 case "pet": {
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!isGroup) return m.reply(global.mess.group);
 let user = initRPG(senderNumber);
 if (!user.pet) return m.reply('⚠️ Kamu belum punya pet. Gunakan .adopt <jenis>');
@@ -1633,6 +1978,9 @@ m.reply(`🐾 Pet kamu: ${user.pet.type} | Level: ${user.pet.level}`);
 break;
 
 case "upgradepet": {
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!isGroup) return m.reply(global.mess.group);
 let user = initRPG(senderNumber);
 if (!user.pet) return m.reply('⚠️ Kamu belum punya pet. Gunakan .adopt <jenis>');
@@ -1646,6 +1994,9 @@ break;
 
 // Crafting (simple)
 case "craft": {
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!isGroup) return m.reply(global.mess.group);
 let user = initRPG(senderNumber);
 if (!args[0]) return m.reply("⚠️ Gunakan: .craft <item>\nContoh: .craft pedang\nReagen: 2 batu + 1 emas");
@@ -1663,6 +2014,9 @@ break;
 
 // Trade / gift
 case "trade": {
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!isGroup) return m.reply(global.mess.group);
 if (!m.message.extendedTextMessage?.contextInfo?.mentionedJid) return m.reply('⚠️ Tag user untuk trade!');
 let target = m.message.extendedTextMessage.contextInfo.mentionedJid[0];
@@ -1680,6 +2034,9 @@ break;
 
 // Leaderboard top
 case "top": {
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!isGroup) return m.reply(global.mess.group);
 // get top by level then exp
 let users = Object.entries(global.db.data.rpg)
@@ -1699,6 +2056,9 @@ break;
 
 // Marry
 case "marry": {
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!isGroup) return m.reply(global.mess.group);
 if (!m.message.extendedTextMessage?.contextInfo?.mentionedJid) return m.reply('⚠️ Tag user untuk menikah!');
 let target = m.message.extendedTextMessage.contextInfo.mentionedJid[0];
@@ -1714,6 +2074,9 @@ m.reply(`💍 Selamat! @${senderNumber} menikah dengan @${targetNum}`, { mention
 break;
 
 case "divorce": {
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!isGroup) return m.reply(global.mess.group);
 let user = initRPG(senderNumber);
 if (!user.marriedTo) return m.reply('⚠️ Kamu tidak sedang menikah!');
@@ -1726,6 +2089,9 @@ break;
 
 // Ojek mini-game: antar penumpang / dapat fare
 case "ojek": {
+if (!isRegistered(senderNumber)) {
+return m.reply(`⚠️ Kamu belum terdaftar!\nKetik ${prefix}register <nama> <umur> untuk mendaftar.`);
+}
 if (!isGroup) return m.reply(global.mess.group);
 let user = initRPG(senderNumber);
 if (user.stamina <= 0) return m.reply('😴 Stamina habis! Ketik .rest dulu.');
@@ -1741,88 +2107,6 @@ m.reply(`🏍️ Ojek selesai! Jarak ${distance}km | Pendapatan 💰 ${fare} | E
 checkLevelUp(user, m, vinss);
 }
 break;
-
-case "ulartangga": {
-  if (!isGroup) return vinss.sendMessage(from, { text: "⚠ Hanya bisa di grup!" });
-
-  if (snakeLadder[from]) {
-    return vinss.sendMessage(from, { text: "⚠ Game sudah berjalan di grup ini!" });
-  }
-
-  if (!m.message.extendedTextMessage?.contextInfo?.mentionedJid) {
-    return vinss.sendMessage(from, { text: "⚠ Tag teman untuk mulai main!\nContoh: .ulartangga @user1 @user2" });
-  }
-
-  const players = [sender, ...m.message.extendedTextMessage.contextInfo.mentionedJid];
-  snakeLadder[from] = {
-    players,
-    positions: Object.fromEntries(players.map((p) => [p, 0])),
-    turn: 0,
-  };
-
-  vinss.sendMessage(from, {
-    text: `🎮 Game Ular Tangga dimulai!\n\nPemain:\n${players.map((p, i) => `P${i + 1}: @${p.split("@")[0]}`).join("\n")}\n\nGiliran pertama: @${players[0].split("@")[0]} (ketik .roll)`,
-    mentions: players,
-  });
-}
-break;
-
-case "roll": {
-  if (!isGroup) return vinss.sendMessage(from, { text: "⚠ Hanya bisa dimainkan di grup!" });
-  if (!snakeLadder[from]) {
-    return vinss.sendMessage(from, { text: "⚠ Tidak ada game di grup ini!\nKetik .ulartangga untuk mulai." });
-  }
-
-  let game = snakeLadder[from];
-  let currentPlayer = game.players[game.turn];
-
-  if (!game.players.includes(sender)) return; // abaikan selain pemain
-  if (sender !== currentPlayer) {
-    return vinss.sendMessage(from, {
-      text: `⚠ Sekarang giliran @${currentPlayer.split("@")[0]}`,
-      mentions: [currentPlayer],
-    });
-  }
-
-  let dice = Math.floor(Math.random() * 6) + 1;
-  game.positions[sender] += dice;
-
-  // Ular & tangga
-  const ladders = { 3: 22, 5: 8, 11: 26, 20: 29 };
-  const snakes = { 27: 1, 21: 9, 17: 4, 19: 7 };
-  if (game.positions[sender] in ladders) game.positions[sender] = ladders[game.positions[sender]];
-  if (game.positions[sender] in snakes) game.positions[sender] = snakes[game.positions[sender]];
-
-  // Render papan
-  const buffer = await drawBoard(game);
-
-  await vinss.sendMessage(
-    from,
-    {
-      image: buffer,
-      caption: `🎲 @${sender.split("@")[0]} lempar dadu: *${dice}*\n📍 Posisi sekarang: ${game.positions[sender]}`,
-      mentions: [sender],
-    },
-    { quoted: m }
-  );
-
-  if (game.positions[sender] >= 100) {
-    vinss.sendMessage(from, {
-      text: `🏆 @${sender.split("@")[0]} MENANG!!! 🎉`,
-      mentions: [sender],
-    });
-    delete snakeLadder[from];
-  } else {
-    game.turn = (game.turn + 1) % game.players.length;
-    let nextPlayer = game.players[game.turn];
-    vinss.sendMessage(from, {
-      text: `➡ Giliran selanjutnya: @${nextPlayer.split("@")[0]}`,
-      mentions: [nextPlayer],
-    });
-  }
-}
-break;
-
 
 
 default:

@@ -2,16 +2,17 @@
   "data": {
     "chats": {
       "120363419381957383@g.us": {
-        "lastSeen": 1758553537310,
-        "lastType": "imageMessage"
-      },
-      "6285380166282@s.whatsapp.net": {
-        "lastSeen": 1758553578278,
-        "lastType": "imageMessage"
+        "lastSeen": 1758810891698,
+        "lastType": "stickerMessage"
       }
     },
     "users": {},
     "settings": {},
     "rpg": {}
+  },
+  "groups": {
+    "120363419381957383@g.us": {
+      "antilink": false
+    }
   }
 }

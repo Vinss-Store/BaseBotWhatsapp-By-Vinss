@@ -1,5 +1,5 @@
 /*
-   * Base WhatsApp Bot (MD) with Pairing Code
+   * Base WhatsApp Bot (MD) dengan Pairing Code
    * Created by vinss Production
 */
 
@@ -12,7 +12,7 @@ const {
   useMultiFileAuthState,
   DisconnectReason,
   fetchLatestBaileysVersion,
-  downloadMediaMessage, // ✅ gunakan downloadMediaMessage
+  downloadMediaMessage,
   jidDecode,
 } = require("@whiskeysockets/baileys");
 
@@ -104,21 +104,42 @@ async function startBot() {
       global.db.data.chats[from].lastType = type;
 
       // ambil isi pesan
-let msgBody = "";
-if (m.message.conversation) msgBody = m.message.conversation;
-else if (m.message.extendedTextMessage) msgBody = m.message.extendedTextMessage.text;
-else if (m.message.imageMessage?.caption) msgBody = m.message.imageMessage.caption;
-else if (m.message.videoMessage?.caption) msgBody = m.message.videoMessage.caption;
+      let msgBody = "";
+      if (m.message.conversation) msgBody = m.message.conversation;
+      else if (m.message.extendedTextMessage) msgBody = m.message.extendedTextMessage.text;
+      else if (m.message.imageMessage?.caption) msgBody = m.message.imageMessage.caption;
+      else if (m.message.videoMessage?.caption) msgBody = m.message.videoMessage.caption;
 
-// ambil nomor pengirim
-const senderJid = m.key.fromMe ? vinss.user.id : (m.key.participant || m.key.remoteJid);
-const senderNumber = senderJid.split("@")[0];
+      // ambil nomor pengirim
+      const senderJid = m.key.fromMe ? vinss.user.id : (m.key.participant || m.key.remoteJid);
+      const senderNumber = senderJid.split("@")[0];
 
-// tampilkan di terminal
-console.log(
-  chalk.cyan(`📩 Dari: ${senderNumber}\n💬 Pesan: ${msgBody || "[Non-text message]"}`)
-);
+      // === LOG PESAN DENGAN FORMAT YANG DIMINTA ===
+      console.log(chalk.yellow("═".repeat(50)));
+      
+      // Tentukan jenis chat (private/group)
+      const isGroup = from.endsWith("@g.us");
+      const chatType = isGroup ? "Group" : "Private";
+      
+      // Dapatkan nama grup jika group chat
+      let groupName = "";
+      if (isGroup) {
+        try {
+          const groupMetadata = await vinss.groupMetadata(from);
+          groupName = groupMetadata.subject || "Unknown Group";
+        } catch (e) {
+          groupName = "Unknown Group";
+        }
+      }
 
+      // Tampilkan log sesuai format
+      console.log(chalk.cyan(`📱 Nomor    : ${senderNumber}`));
+      console.log(chalk.cyan(`💬 Pesan    : ${msgBody || "[Media/Non-text message]"}`));
+      console.log(chalk.cyan(`👥 Chat/Group : ${isGroup ? `${groupName} (${from})` : 'Private Chat'}`));
+      console.log(chalk.cyan(`📊 Tipe     : ${chatType}`));
+      console.log(chalk.cyan(`⏰ Waktu    : ${new Date().toLocaleString()}`));
+      
+      console.log(chalk.yellow("═".repeat(50)));
 
       // lempar ke handler
       delete require.cache[require.resolve("./vinss")];
@@ -172,28 +193,51 @@ console.log(
     }
   });
 
+  // === Event panggilan masuk ===
+vinss.ev.on("call", async (callUpdate) => {
+  try {
+    for (const call of callUpdate) {
+      if (call.status === "offer") { 
+        const caller = call.from; // jid si penelpon
+        console.log(chalk.red(`🚫 Terdeteksi panggilan dari: ${caller}`));
+
+        // Kirim pesan peringatan
+        await vinss.sendMessage(caller, { 
+          text: "🚫 Maaf, dilarang menelpon bot! Kamu otomatis diblokir." 
+        });
+
+        // Blokir nomor
+        await vinss.updateBlockStatus(caller, "block");
+        console.log(chalk.green(`✅ Nomor ${caller} berhasil diblokir`));
+      }
+    }
+  } catch (err) {
+    console.error("❌ Error auto block call:", err);
+  }
+});
+
+
   // === Helper Download & Save Media ===
   vinss.downloadAndSaveMediaMessage = async (message, filename = "temp", attachExtension = true) => {
-  try {
-    const buffer = await downloadMediaMessage(
-      message,
-      "buffer",
-      {},
-      { logger: vinss.logger }
-    );
+    try {
+      const buffer = await downloadMediaMessage(
+        message,
+        "buffer",
+        {},
+        { logger: vinss.logger }
+      );
 
-    // gunakan API baru
-    const type = await fileTypeFromBuffer(buffer);
-    const trueFileName = attachExtension ? `${filename}.${type.ext}` : filename;
+      const type = await fileTypeFromBuffer(buffer);
+      const trueFileName = attachExtension ? `${filename}.${type.ext}` : filename;
 
-    const savePath = path.join(__dirname, trueFileName);
-    fs.writeFileSync(savePath, buffer);
-    return savePath;
-  } catch (err) {
-    console.error("❌ Gagal menyimpan media:", err);
-    throw err;
-  }
-};
+      const savePath = path.join(__dirname, trueFileName);
+      fs.writeFileSync(savePath, buffer);
+      return savePath;
+    } catch (err) {
+      console.error("❌ Gagal menyimpan media:", err);
+      throw err;
+    }
+  };
 
   vinss.ev.on("creds.update", saveCreds);
 }
