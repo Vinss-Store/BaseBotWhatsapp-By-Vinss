@@ -10,7 +10,7 @@ const chalk = require("chalk");
 // ==============================
 global.prefix = "."; // Prefix command bot (ubah sesuai keinginan)
 global.botName = "VINSSBOTZ"; // Nama bot
-global.owner = ["6285380166282"];
+global.owner = ["_"];
 global.ownerNumber = global.owner; // alias
 
 // ==============================
@@ -126,7 +126,7 @@ global.profile = global.thumb;
 global.my = {
   ch: "1203632xxxxxxx@newsletter", // JID channel
   chid: "0029VaF4IIt1CYoaRgoOaX2i@newsletter", // Invite code channel
-  gh: "https://github.com/vinssbotz" // link github / web
+  gh: "https://github.com/Vinss-Store" // link github / web
 };
 
 // ==============================
